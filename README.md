@@ -1,4 +1,4 @@
-## Telekinesis
+## Telekinesis (Remod version)
 
 Current version 2.0.8: [Download](https://code.remod.org/Telekinesis.cs)
 
@@ -40,4 +40,4 @@ The settings and options for this plugin can be configured in the Telekinesis.js
 
 - Bombardir, the original author of this plugin
 - Fujikura, for the active item removal code
-- redBDGR, long-time maintainr of this plugin
+- redBDGR, long-time maintainer of this plugin
