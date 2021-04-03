@@ -13,7 +13,7 @@ Currently does not work best with foundations/other building parts that are atta
 ### Usage
 
 Use the left and right click to modify the distance/rotation (depending on what mode is enabled).
-Use the reload key to switch modes (distance, horizontal rotation, vertical rotation, horizontal2 rotation, vertical offset).
+Use the SPRINT OR RELOAD keys to switch modes (distance, horizontal rotation, horizontal snap, vertical rotation, vertical snap, horizontal2 rotation, vertical offset).
 
 ### Permissions
 
