@@ -1,6 +1,6 @@
 ## Telekinesis (Remod version)
 
-Current version 2.0.8: [Download](https://code.remod.org/Telekinesis.cs)
+Current version 2.0.9: [Download](https://code.remod.org/Telekinesis.cs)
 
 Allows players to move/rotate entities without picking them up.
 
