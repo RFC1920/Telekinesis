@@ -1,28 +1,28 @@
-using System;
+using Newtonsoft.Json;
+using Oxide.Core;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Telekinesis", "redBDGR", "2.0.8")]
+    [Info("Telekinesis", "redBDGR/RFC1920", "2.0.9")]
     [Description("Control objects with your mind!")]
     class Telekinesis : RustPlugin
     {
-        private bool Changed;
+        ConfigData configData;
         private static Telekinesis plugin;
         private const string permissionNameADMIN = "telekinesis.admin";
         private const string permissionNameRESTRICTED = "telekinesis.restricted";
 
-        private float maxDist = 3f;
-        private float autoDisableLength = 60f;
-        private bool restrictedBuildingAuthOnly = true;
-        private bool restrictedCanMoveBasePlayers = false;
-        private bool restrictedOwnerIdOnly;
-        private float restrictedGrabDistance = 20f;
-
         private Dictionary<string, BaseEntity> grabList = new Dictionary<string, BaseEntity>();
         private Dictionary<string, UndoInfo> undoDic = new Dictionary<string, UndoInfo>();
+
+        #region Message
+        //private string Lang(string key, string id = null, params object[] args) => string.Format(lang.GetMessage(key, this, id), args);
+        //private void Message(IPlayer player, string key, params object[] args) => player.Reply(Lang(key, player.Id, args));
+        string msg(string key, string id = null) => lang.GetMessage(key, this, id);
+        #endregion
 
         private class UndoInfo
         {
@@ -36,8 +36,11 @@ namespace Oxide.Plugins
             plugin = this;
             permission.RegisterPermission(permissionNameADMIN, this);
             permission.RegisterPermission(permissionNameRESTRICTED, this);
-            LoadVariables();
+            LoadConfigVariables();
+        }
 
+        protected override void LoadDefaultMessages()
+        {
             lang.RegisterMessages(new Dictionary<string, string>
             {
                 //chat
@@ -52,25 +55,52 @@ namespace Oxide.Plugins
             }, this);
         }
 
+        #region config
         protected override void LoadDefaultConfig()
         {
-            Config.Clear();
-            LoadVariables();
+            Puts("Creating new config file.");
+            var config = new ConfigData
+            {
+                Version = Version
+            };
+            SaveConfig(config);
         }
 
-        private void LoadVariables()
+        private void LoadConfigVariables()
         {
-            maxDist = Convert.ToSingle(GetConfig("Settings", "Restricted max distance", 3f));
-            autoDisableLength = Convert.ToSingle(GetConfig("Settings", "Auto disable length", 60f));
-            restrictedBuildingAuthOnly = Convert.ToBoolean(GetConfig("Settings", "Restricted Cannot Use If Building Blocked", true));
-            restrictedOwnerIdOnly = Convert.ToBoolean(GetConfig("Settings", "Restricted OwnerID Only", false));
-            restrictedGrabDistance = Convert.ToSingle(GetConfig("Settings", "Restricted Grab Distance", 20f));
-            restrictedCanMoveBasePlayers = Convert.ToBoolean(GetConfig("Settings", "Restricted Cannot Move Players (Sleeping or Awake)", false));
-
-            if (!Changed) return;
-            SaveConfig();
-            Changed = false;
+            configData = Config.ReadObject<ConfigData>();
+            configData.Version = Version;
+            SaveConfig(configData);
         }
+
+        private void SaveConfig(ConfigData config) => Config.WriteObject(config, true);
+
+        public class ConfigData
+        {
+            public Settings Settings;
+            public VersionNumber Version { get; internal set; }
+        }
+        public class Settings
+        {
+            [JsonProperty(PropertyName = "Restricted max distance")]
+            public float maxDist = 3f;
+
+            [JsonProperty(PropertyName = "Auto disable length")]
+            public float autoDisableLength = 60f;
+
+            [JsonProperty(PropertyName = "Restricted Cannot Use If Building Blocked")]
+            public bool restrictedBuildingAuthOnly = true;
+
+            [JsonProperty(PropertyName = "Restricted OwnerID Only")]
+            public bool restrictedOwnerIdOnly;
+
+            [JsonProperty(PropertyName = "Restricted Grab Distance")]
+            public float restrictedGrabDistance = 20f;
+
+            [JsonProperty(PropertyName = "Restricted Cannot Move Players (Sleeping or Awake)")]
+            public bool restrictedCanMoveBasePlayers = false;
+        }
+        #endregion
 
         private void OnEntityKill(BaseNetworkable entity)
         {
@@ -102,14 +132,19 @@ namespace Oxide.Plugins
                 player.ChatMessage(msg("No Permission", player.UserIDString));
                 return;
             }
-            if (restrictedBuildingAuthOnly)
+            if (configData.Settings.restrictedBuildingAuthOnly)
+            {
                 if (permission.UserHasPermission(player.UserIDString, permissionNameRESTRICTED))
+                {
                     if (!player.CanBuild())
                     {
                         player.ChatMessage(msg("Building Blocked", player.UserIDString));
                         return;
                     }
+                }
+            }
             if (args.Length == 1)
+            {
                 if (args[0] == "undo")
                 {
                     if (!undoDic.ContainsKey(player.UserIDString))
@@ -117,8 +152,8 @@ namespace Oxide.Plugins
                         player.ChatMessage(msg("No Undo Found", player.UserIDString));
                         return;
                     }
-                    if (!undoDic[player.UserIDString].entity.IsValid())
-                        return;
+                    if (!undoDic[player.UserIDString].entity.IsValid()) return;
+
                     undoDic[player.UserIDString].entity.GetComponent<TelekinesisComponent>().DestroyThis();
                     undoDic[player.UserIDString].entity.transform.position = undoDic[player.UserIDString].pos;
                     undoDic[player.UserIDString].entity.transform.rotation = undoDic[player.UserIDString].rot;
@@ -127,12 +162,12 @@ namespace Oxide.Plugins
                     undoDic.Remove(player.UserIDString);
                     return;
                 }
+            }
             if (grabList.ContainsKey(player.UserIDString))
             {
                 BaseEntity ent = grabList[player.UserIDString];
                 TelekinesisComponent grab = ent.GetComponent<TelekinesisComponent>();
-                if (grab)
-                    grab.DestroyThis();
+                if (grab) grab.DestroyThis();
                 grabList.Remove(player.UserIDString);
                 return;
             }
@@ -156,8 +191,7 @@ namespace Oxide.Plugins
                 item.MarkDirty();
                 timer.Once(0.15f, () =>
                 {
-                    if (item == null)
-                        return;
+                    if (item == null) return;
                     item.MoveToContainer(player.inventory.containerBelt, slot);
                     item.MarkDirty();
                 });
@@ -167,30 +201,43 @@ namespace Oxide.Plugins
         private BaseEntity GrabEntity(BasePlayer player)
         {
             BaseEntity ent = FindEntity(player);
-            if (ent == null)
-                return null;
+            if (ent == null) return null;
+
             if (PlayerIsRestricted(player))
             {
-                if (restrictedOwnerIdOnly) // Target object ID restriction
+                if (configData.Settings.restrictedOwnerIdOnly) // Target object ID restriction
+                {
                     if (ent.OwnerID != player.userID)
+                    {
                         return null;
-                if (Vector3.Distance(ent.transform.position, player.transform.position) >= restrictedGrabDistance) // Distance restriction
+                    }
+                }
+                if (Vector3.Distance(ent.transform.position, player.transform.position) >= configData.Settings.restrictedGrabDistance) // Distance restriction
+                {
                     return null;
-                if (!restrictedCanMoveBasePlayers)
+                }
+                if (!configData.Settings.restrictedCanMoveBasePlayers)
+                {
                     if (ent.GetComponent<BasePlayer>() != null)
+                    {
                         return null;
+                    }
+                }
             }
             TelekinesisComponent grab = ent.gameObject.AddComponent<TelekinesisComponent>();
             grab.originPlayer = player;
             if (undoDic.ContainsKey(player.UserIDString))
-                undoDic[player.UserIDString] = new UndoInfo { pos = ent.transform.position, rot = ent.transform.rotation, entity = ent };
-            else
-                undoDic.Add(player.UserIDString, new UndoInfo { pos = ent.transform.position, rot = ent.transform.rotation, entity = ent });
-            grabList.Add(player.UserIDString, ent);
-            timer.Once(autoDisableLength, () =>
             {
-                if (grab)
-                    grab.DestroyThis();
+                undoDic[player.UserIDString] = new UndoInfo { pos = ent.transform.position, rot = ent.transform.rotation, entity = ent };
+            }
+            else
+            {
+                undoDic.Add(player.UserIDString, new UndoInfo { pos = ent.transform.position, rot = ent.transform.rotation, entity = ent });
+            }
+            grabList.Add(player.UserIDString, ent);
+            timer.Once(configData.Settings.autoDisableLength, () =>
+            {
+                if (grab) grab.DestroyThis();
             });
             return ent;
         }
@@ -204,8 +251,7 @@ namespace Oxide.Plugins
         {
             RaycastHit hit;
             if (!Physics.Raycast(player.eyes.HeadRay(), out hit)) return null;
-            if (hit.GetEntity() == null)
-                return null;
+            if (hit.GetEntity() == null) return null;
             BaseEntity entity = hit.GetEntity();
             return entity;
         }
@@ -217,14 +263,20 @@ namespace Oxide.Plugins
             private StabilityEntity stab;
             private float entDis = 2f;
             private float vertOffset = 1f;
-            private float maxDis = plugin.maxDist;
+            private float maxDis = plugin.configData.Settings.maxDist;
             private bool isRestricted;
-            private float nextTime;
+            private float nextTime1;
+            private float nextTime2;
+            private float nextTime3;
+            private float nextTime4;
             private string mode = "distance";
 
             private void Awake()
             {
-                nextTime = Time.time + 0.5f;
+                nextTime1 = Time.time + 0.5f;
+                nextTime2 = Time.time + 0.5f;
+                nextTime3 = Time.time + 0.5f;
+                nextTime4 = Time.time + 0.5f;
                 target = gameObject.GetComponent<BaseEntity>();
                 stab = target?.GetComponent<StabilityEntity>();
 
@@ -232,23 +284,73 @@ namespace Oxide.Plugins
                 {
                     if (!originPlayer) return;
                     if (plugin.permission.UserHasPermission(originPlayer.UserIDString, permissionNameRESTRICTED))
+                    {
                         isRestricted = true;
+                    }
                 });
             }
 
             private void Update()
             {
-                if (originPlayer == null)
-                    return;
+                if (originPlayer == null) return;
                 if (isRestricted)
+                {
                     if (originPlayer.CanBuild() == false)
                     {
                         DestroyThis();
                         return;
                     }
+                }
+                if (originPlayer.serverInput.IsDown(BUTTON.JUMP))
+                {
+                    DestroyThis();
+                    return;
+                }
+                if (originPlayer.serverInput.IsDown(BUTTON.SPRINT))
+                {
+                    if (Time.time > nextTime1)
+                    {
+                        switch (mode)
+                        {
+                            case "vertical offset":
+                                mode = "rotate (horizontal2)";
+                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                break;
+                            case "rotate (horizontal2)":
+                                mode = "vertical snap";
+                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                break;
+                            case "rotate (vertical snap)":
+                                mode = "rotate (veritical)";
+                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                break;
+                            case "rotate (vertical)":
+                                mode = "rotate (horizontal snap)";
+                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                break;
+                            case "rotate (horizontal snap)":
+                                mode = "rotate (horizontal)";
+                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                break;
+                            case "rotate (horizontal)":
+                                mode = "rotate (distance)";
+                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                break;
+                            case "distance":
+                                mode = "vertical offset";
+                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                break;
+                            default:
+                                mode = "distance";
+                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                break;
+                        }
+                        nextTime1 = Time.time + 0.5f;
+                    }
+                }
                 if (originPlayer.serverInput.IsDown(BUTTON.RELOAD))
                 {
-                    if (Time.time > nextTime)
+                    if (Time.time > nextTime2)
                     {
                         switch (mode)
                         {
@@ -257,10 +359,18 @@ namespace Oxide.Plugins
                                 originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
                                 break;
                             case "rotate (horizontal)":
+                                mode = "rotate (horizontal snap)";
+                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                break;
+                            case "rotate (horizontal snap)":
                                 mode = "rotate (vertical)";
                                 originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
                                 break;
                             case "rotate (vertical)":
+                                mode = "rotate (vertical snap)";
+                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                break;
+                            case "rotate (vertical snap)":
                                 mode = "rotate (horizontal2)";
                                 originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
                                 break;
@@ -272,11 +382,31 @@ namespace Oxide.Plugins
                                 mode = "distance";
                                 originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
                                 break;
+                            default:
+                                mode = "distance";
+                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                break;
                         }
-                        nextTime = Time.time + 0.5f;
+                        nextTime2 = Time.time + 0.5f;
                     }
                 }
-                if (originPlayer.serverInput.IsDown(BUTTON.FIRE_PRIMARY))
+                if (originPlayer.serverInput.WasJustPressed(BUTTON.FIRE_PRIMARY) && mode.Contains("snap"))
+                {
+                    if (Time.time > nextTime3)
+                    {
+                        switch (mode)
+                        {
+                            case "rotate (horizontal snap)":
+                                gameObject.transform.Rotate(0, +45f, 0);
+                                break;
+                            case "rotate (vertical snap)":
+                                gameObject.transform.Rotate(0, 0, -45f);
+                                break;
+                        }
+                        nextTime3 = Time.time + 0.25f;
+                    }
+                }
+                else if (originPlayer.serverInput.IsDown(BUTTON.FIRE_PRIMARY) && !mode.Contains("snap"))
                 {
                     switch (mode)
                     {
@@ -284,10 +414,14 @@ namespace Oxide.Plugins
                             if (isRestricted)
                             {
                                 if (entDis <= maxDis)
+                                {
                                     entDis = entDis + 0.01f;
+                                }
                             }
                             else
+                            {
                                 entDis = entDis + 0.01f;
+                            }
                             break;
                         case "rotate (horizontal)":
                             gameObject.transform.Rotate(0, +0.5f, 0);
@@ -303,7 +437,23 @@ namespace Oxide.Plugins
                             break;
                     }
                 }
-                if (originPlayer.serverInput.IsDown(BUTTON.FIRE_SECONDARY))
+                else if (originPlayer.serverInput.WasJustPressed(BUTTON.FIRE_SECONDARY) && mode.Contains("snap"))
+                {
+                    if (Time.time > nextTime4)
+                    {
+                        switch (mode)
+                        {
+                            case "rotate (horizontal snap)":
+                                gameObject.transform.Rotate(0, -45f, 0);
+                                break;
+                            case "rotate (vertical snap)":
+                                gameObject.transform.Rotate(0, 0, +45f);
+                                break;
+                        }
+                        nextTime4 = Time.time + 0.25f;
+                    }
+                }
+                if (originPlayer.serverInput.IsDown(BUTTON.FIRE_SECONDARY) && !mode.Contains("snap"))
                 {
                     switch (mode)
                     {
@@ -329,8 +479,7 @@ namespace Oxide.Plugins
                 //else
                     //gameObject.transform.Rotate(gameObject.transform.rotation.x, roty, gameObject.transform.rotation.z);
                 target.transform.position = Vector3.Lerp(target.transform.position, originPlayer.transform.position + originPlayer.eyes.HeadRay().direction * entDis + new Vector3(0, vertOffset, 0), UnityEngine.Time.deltaTime * 15f);
-                if (stab?.grounded == false)
-                    stab.grounded = true;
+                if (stab?.grounded == false) stab.grounded = true;
 
                 target.transform.hasChanged = true;
                 target.UpdateNetworkGroup();
@@ -342,31 +491,12 @@ namespace Oxide.Plugins
                 //if (plugin.undoDic.ContainsKey(originPlayer.UserIDString))
                 //    plugin.undoDic.Remove(originPlayer.UserIDString);
                 if (plugin.grabList.ContainsKey(originPlayer.UserIDString))
+                {
                     plugin.grabList.Remove(originPlayer.UserIDString);
+                }
                 originPlayer.ChatMessage(plugin.msg("Grab tool end", originPlayer.UserIDString));
                 Destroy(this);
             }
         }
-
-        private object GetConfig(string menu, string datavalue, object defaultValue)
-        {
-            var data = Config[menu] as Dictionary<string, object>;
-            if (data == null)
-            {
-                data = new Dictionary<string, object>();
-                Config[menu] = data;
-                Changed = true;
-            }
-            object value;
-            if (!data.TryGetValue(datavalue, out value))
-            {
-                value = defaultValue;
-                data[datavalue] = value;
-                Changed = true;
-            }
-            return value;
-        }
-
-        string msg(string key, string id = null) => lang.GetMessage(key, this, id);
     }
 }
