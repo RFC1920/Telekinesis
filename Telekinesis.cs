@@ -1,12 +1,13 @@
 using Newtonsoft.Json;
 using Oxide.Core;
+using Oxide.Core.Libraries.Covalence;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Telekinesis", "redBDGR/RFC1920", "2.0.9")]
+    [Info("Telekinesis", "redBDGR/RFC1920", "2.0.10")]
     [Description("Control objects with your mind!")]
     class Telekinesis : RustPlugin
     {
@@ -19,9 +20,8 @@ namespace Oxide.Plugins
         private Dictionary<string, UndoInfo> undoDic = new Dictionary<string, UndoInfo>();
 
         #region Message
-        //private string Lang(string key, string id = null, params object[] args) => string.Format(lang.GetMessage(key, this, id), args);
-        //private void Message(IPlayer player, string key, params object[] args) => player.Reply(Lang(key, player.Id, args));
-        string msg(string key, string id = null) => lang.GetMessage(key, this, id);
+        private string Lang(string key, string id = null, params object[] args) => string.Format(lang.GetMessage(key, this, id), args);
+        private void Message(IPlayer player, string key, params object[] args) => player.Reply(Lang(key, player.Id, args));
         #endregion
 
         private class UndoInfo
@@ -129,7 +129,7 @@ namespace Oxide.Plugins
         {
             if (!permission.UserHasPermission(player.UserIDString, permissionNameADMIN) && !permission.UserHasPermission(player.UserIDString, permissionNameRESTRICTED))
             {
-                player.ChatMessage(msg("No Permission", player.UserIDString));
+                Message(player.IPlayer, "No Permission");
                 return;
             }
             if (configData.Settings.restrictedBuildingAuthOnly)
@@ -138,7 +138,7 @@ namespace Oxide.Plugins
                 {
                     if (!player.CanBuild())
                     {
-                        player.ChatMessage(msg("Building Blocked", player.UserIDString));
+                        Message(player.IPlayer, "Building Blocked");
                         return;
                     }
                 }
@@ -149,7 +149,7 @@ namespace Oxide.Plugins
                 {
                     if (!undoDic.ContainsKey(player.UserIDString))
                     {
-                        player.ChatMessage(msg("No Undo Found", player.UserIDString));
+                        Message(player.IPlayer, "No Undo Found");
                         return;
                     }
                     if (!undoDic[player.UserIDString].entity.IsValid()) return;
@@ -158,7 +158,7 @@ namespace Oxide.Plugins
                     undoDic[player.UserIDString].entity.transform.position = undoDic[player.UserIDString].pos;
                     undoDic[player.UserIDString].entity.transform.rotation = undoDic[player.UserIDString].rot;
                     undoDic[player.UserIDString].entity.SendNetworkUpdate();
-                    player.ChatMessage(msg("Undo Success", player.UserIDString));
+                    Message(player.IPlayer, "Undo Success");
                     undoDic.Remove(player.UserIDString);
                     return;
                 }
@@ -174,11 +174,11 @@ namespace Oxide.Plugins
             BaseEntity grabEnt = GrabEntity(player);
             if (grabEnt == null)
             {
-                player.ChatMessage(msg("Invalid entity", player.UserIDString));
+                Message(player.IPlayer, "Invalid entity");
                 return;
             }
             RemoveActiveItem(player);
-            player.ChatMessage(msg("Grab tool start", player.UserIDString));
+            Message(player.IPlayer, "Grab tool start");
         }
 
         // Active item removal code courtesy of Fujikura
@@ -314,35 +314,35 @@ namespace Oxide.Plugins
                         {
                             case "vertical offset":
                                 mode = "rotate (horizontal2)";
-                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
                                 break;
                             case "rotate (horizontal2)":
                                 mode = "vertical snap";
-                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
                                 break;
                             case "rotate (vertical snap)":
                                 mode = "rotate (veritical)";
-                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
                                 break;
                             case "rotate (vertical)":
                                 mode = "rotate (horizontal snap)";
-                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
                                 break;
                             case "rotate (horizontal snap)":
                                 mode = "rotate (horizontal)";
-                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
                                 break;
                             case "rotate (horizontal)":
                                 mode = "rotate (distance)";
-                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
                                 break;
                             case "distance":
                                 mode = "vertical offset";
-                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
                                 break;
                             default:
                                 mode = "distance";
-                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
                                 break;
                         }
                         nextTime1 = Time.time + 0.5f;
@@ -356,35 +356,35 @@ namespace Oxide.Plugins
                         {
                             case "distance":
                                 mode = "rotate (horizontal)";
-                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
                                 break;
                             case "rotate (horizontal)":
                                 mode = "rotate (horizontal snap)";
-                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
                                 break;
                             case "rotate (horizontal snap)":
                                 mode = "rotate (vertical)";
-                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
                                 break;
                             case "rotate (vertical)":
                                 mode = "rotate (vertical snap)";
-                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
                                 break;
                             case "rotate (vertical snap)":
                                 mode = "rotate (horizontal2)";
-                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
                                 break;
                             case "rotate (horizontal2)":
                                 mode = "vertical offset";
-                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
                                 break;
                             case "vertical offset":
                                 mode = "distance";
-                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
                                 break;
                             default:
                                 mode = "distance";
-                                originPlayer.ChatMessage(string.Format(plugin.msg("TLS Mode Changed", originPlayer.UserIDString), mode));
+                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
                                 break;
                         }
                         nextTime2 = Time.time + 0.5f;
@@ -494,7 +494,7 @@ namespace Oxide.Plugins
                 {
                     plugin.grabList.Remove(originPlayer.UserIDString);
                 }
-                originPlayer.ChatMessage(plugin.msg("Grab tool end", originPlayer.UserIDString));
+                plugin.Message(originPlayer.IPlayer, "Grab tool end");
                 Destroy(this);
             }
         }
