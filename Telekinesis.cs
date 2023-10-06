@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Telekinesis", "redBDGR/RFC1920", "2.0.10")]
+    [Info("Telekinesis", "redBDGR/RFC1920", "2.0.11")]
     [Description("Control objects with your mind!")]
     class Telekinesis : RustPlugin
     {
@@ -43,7 +43,6 @@ namespace Oxide.Plugins
         {
             lang.RegisterMessages(new Dictionary<string, string>
             {
-                //chat
                 ["No Permission"] = "You are not allowed to use this command!",
                 ["Grab tool start"] = "The telekinesis tool has been enabled",
                 ["Grab tool end"] = "The telekinesis tool has been disabled",
@@ -59,7 +58,7 @@ namespace Oxide.Plugins
         protected override void LoadDefaultConfig()
         {
             Puts("Creating new config file.");
-            var config = new ConfigData
+            ConfigData config = new ConfigData
             {
                 Version = Version
             };
@@ -80,6 +79,7 @@ namespace Oxide.Plugins
             public Settings Settings;
             public VersionNumber Version { get; internal set; }
         }
+
         public class Settings
         {
             [JsonProperty(PropertyName = "Restricted max distance")]
@@ -98,18 +98,16 @@ namespace Oxide.Plugins
             public float restrictedGrabDistance = 20f;
 
             [JsonProperty(PropertyName = "Restricted Cannot Move Players (Sleeping or Awake)")]
-            public bool restrictedCanMoveBasePlayers = false;
+            public bool restrictedCanMoveBasePlayers;
         }
         #endregion
 
         private void OnEntityKill(BaseNetworkable entity)
         {
             BaseEntity ent = entity as BaseEntity;
-            if (ent == null)
-                return;
+            if (ent == null) return;
             TelekinesisComponent tls = ent.GetComponent<TelekinesisComponent>();
-            if (!tls)
-                return;
+            if (!tls) return;
             tls.DestroyThis();
             /*
             string x = "0";
@@ -132,36 +130,27 @@ namespace Oxide.Plugins
                 Message(player.IPlayer, "No Permission");
                 return;
             }
-            if (configData.Settings.restrictedBuildingAuthOnly)
+            if (configData.Settings.restrictedBuildingAuthOnly && permission.UserHasPermission(player.UserIDString, permissionNameRESTRICTED) && !player.CanBuild())
             {
-                if (permission.UserHasPermission(player.UserIDString, permissionNameRESTRICTED))
-                {
-                    if (!player.CanBuild())
-                    {
-                        Message(player.IPlayer, "Building Blocked");
-                        return;
-                    }
-                }
+                Message(player.IPlayer, "Building Blocked");
+                return;
             }
-            if (args.Length == 1)
+            if (args.Length == 1 && args[0] == "undo")
             {
-                if (args[0] == "undo")
+                if (!undoDic.ContainsKey(player.UserIDString))
                 {
-                    if (!undoDic.ContainsKey(player.UserIDString))
-                    {
-                        Message(player.IPlayer, "No Undo Found");
-                        return;
-                    }
-                    if (!undoDic[player.UserIDString].entity.IsValid()) return;
-
-                    undoDic[player.UserIDString].entity.GetComponent<TelekinesisComponent>().DestroyThis();
-                    undoDic[player.UserIDString].entity.transform.position = undoDic[player.UserIDString].pos;
-                    undoDic[player.UserIDString].entity.transform.rotation = undoDic[player.UserIDString].rot;
-                    undoDic[player.UserIDString].entity.SendNetworkUpdate();
-                    Message(player.IPlayer, "Undo Success");
-                    undoDic.Remove(player.UserIDString);
+                    Message(player.IPlayer, "No Undo Found");
                     return;
                 }
+                if (!undoDic[player.UserIDString].entity.IsValid()) return;
+
+                undoDic[player.UserIDString].entity.GetComponent<TelekinesisComponent>().DestroyThis();
+                undoDic[player.UserIDString].entity.transform.position = undoDic[player.UserIDString].pos;
+                undoDic[player.UserIDString].entity.transform.rotation = undoDic[player.UserIDString].rot;
+                undoDic[player.UserIDString].entity.SendNetworkUpdate();
+                Message(player.IPlayer, "Undo Success");
+                undoDic.Remove(player.UserIDString);
+                return;
             }
             if (grabList.ContainsKey(player.UserIDString))
             {
@@ -184,9 +173,9 @@ namespace Oxide.Plugins
         // Active item removal code courtesy of Fujikura
         private void RemoveActiveItem(BasePlayer player)
         {
-            foreach (var item in player.inventory.containerBelt.itemList.Where(x => x.IsValid() && x.GetHeldEntity()).ToList())
+            foreach (Item item in player.inventory.containerBelt.itemList.Where(x => x.IsValid() && x.GetHeldEntity()).ToList())
             {
-                var slot = item.position;
+                int slot = item.position;
                 item.RemoveFromContainer();
                 item.MarkDirty();
                 timer.Once(0.15f, () =>
@@ -205,35 +194,22 @@ namespace Oxide.Plugins
 
             if (PlayerIsRestricted(player))
             {
-                if (configData.Settings.restrictedOwnerIdOnly) // Target object ID restriction
+                if (configData.Settings.restrictedOwnerIdOnly && ent.OwnerID != player.userID) // Target object ID restriction
                 {
-                    if (ent.OwnerID != player.userID)
-                    {
-                        return null;
-                    }
+                    return null;
                 }
                 if (Vector3.Distance(ent.transform.position, player.transform.position) >= configData.Settings.restrictedGrabDistance) // Distance restriction
                 {
                     return null;
                 }
-                if (!configData.Settings.restrictedCanMoveBasePlayers)
+                if (!configData.Settings.restrictedCanMoveBasePlayers && ent.GetComponent<BasePlayer>() != null)
                 {
-                    if (ent.GetComponent<BasePlayer>() != null)
-                    {
-                        return null;
-                    }
+                    return null;
                 }
             }
             TelekinesisComponent grab = ent.gameObject.AddComponent<TelekinesisComponent>();
             grab.originPlayer = player;
-            if (undoDic.ContainsKey(player.UserIDString))
-            {
-                undoDic[player.UserIDString] = new UndoInfo { pos = ent.transform.position, rot = ent.transform.rotation, entity = ent };
-            }
-            else
-            {
-                undoDic.Add(player.UserIDString, new UndoInfo { pos = ent.transform.position, rot = ent.transform.rotation, entity = ent });
-            }
+            undoDic[player.UserIDString] = new UndoInfo { pos = ent.transform.position, rot = ent.transform.rotation, entity = ent };
             grabList.Add(player.UserIDString, ent);
             timer.Once(configData.Settings.autoDisableLength, () =>
             {
@@ -251,9 +227,7 @@ namespace Oxide.Plugins
         {
             RaycastHit hit;
             if (!Physics.Raycast(player.eyes.HeadRay(), out hit)) return null;
-            if (hit.GetEntity() == null) return null;
-            BaseEntity entity = hit.GetEntity();
-            return entity;
+            return hit.GetEntity();
         }
 
         private class TelekinesisComponent : MonoBehaviour
@@ -293,102 +267,93 @@ namespace Oxide.Plugins
             private void Update()
             {
                 if (originPlayer == null) return;
-                if (isRestricted)
+                if (isRestricted && !originPlayer.CanBuild())
                 {
-                    if (originPlayer.CanBuild() == false)
-                    {
-                        DestroyThis();
-                        return;
-                    }
+                    DestroyThis();
+                    return;
                 }
                 if (originPlayer.serverInput.IsDown(BUTTON.JUMP))
                 {
                     DestroyThis();
                     return;
                 }
-                if (originPlayer.serverInput.IsDown(BUTTON.SPRINT))
+                if (originPlayer.serverInput.IsDown(BUTTON.SPRINT) && Time.time > nextTime1)
                 {
-                    if (Time.time > nextTime1)
+                    switch (mode)
                     {
-                        switch (mode)
-                        {
-                            case "vertical offset":
-                                mode = "rotate (horizontal2)";
-                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
-                                break;
-                            case "rotate (horizontal2)":
-                                mode = "vertical snap";
-                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
-                                break;
-                            case "rotate (vertical snap)":
-                                mode = "rotate (veritical)";
-                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
-                                break;
-                            case "rotate (vertical)":
-                                mode = "rotate (horizontal snap)";
-                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
-                                break;
-                            case "rotate (horizontal snap)":
-                                mode = "rotate (horizontal)";
-                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
-                                break;
-                            case "rotate (horizontal)":
-                                mode = "rotate (distance)";
-                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
-                                break;
-                            case "distance":
-                                mode = "vertical offset";
-                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
-                                break;
-                            default:
-                                mode = "distance";
-                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
-                                break;
-                        }
-                        nextTime1 = Time.time + 0.5f;
+                        case "vertical offset":
+                            mode = "rotate (horizontal2)";
+                            plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
+                            break;
+                        case "rotate (horizontal2)":
+                            mode = "vertical snap";
+                            plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
+                            break;
+                        case "rotate (vertical snap)":
+                            mode = "rotate (veritical)";
+                            plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
+                            break;
+                        case "rotate (vertical)":
+                            mode = "rotate (horizontal snap)";
+                            plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
+                            break;
+                        case "rotate (horizontal snap)":
+                            mode = "rotate (horizontal)";
+                            plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
+                            break;
+                        case "rotate (horizontal)":
+                            mode = "rotate (distance)";
+                            plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
+                            break;
+                        case "distance":
+                            mode = "vertical offset";
+                            plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
+                            break;
+                        default:
+                            mode = "distance";
+                            plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
+                            break;
                     }
+                    nextTime1 = Time.time + 0.5f;
                 }
-                if (originPlayer.serverInput.IsDown(BUTTON.RELOAD))
+                if (originPlayer.serverInput.IsDown(BUTTON.RELOAD) && Time.time > nextTime2)
                 {
-                    if (Time.time > nextTime2)
+                    switch (mode)
                     {
-                        switch (mode)
-                        {
-                            case "distance":
-                                mode = "rotate (horizontal)";
-                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
-                                break;
-                            case "rotate (horizontal)":
-                                mode = "rotate (horizontal snap)";
-                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
-                                break;
-                            case "rotate (horizontal snap)":
-                                mode = "rotate (vertical)";
-                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
-                                break;
-                            case "rotate (vertical)":
-                                mode = "rotate (vertical snap)";
-                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
-                                break;
-                            case "rotate (vertical snap)":
-                                mode = "rotate (horizontal2)";
-                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
-                                break;
-                            case "rotate (horizontal2)":
-                                mode = "vertical offset";
-                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
-                                break;
-                            case "vertical offset":
-                                mode = "distance";
-                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
-                                break;
-                            default:
-                                mode = "distance";
-                                plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
-                                break;
-                        }
-                        nextTime2 = Time.time + 0.5f;
+                        case "distance":
+                            mode = "rotate (horizontal)";
+                            plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
+                            break;
+                        case "rotate (horizontal)":
+                            mode = "rotate (horizontal snap)";
+                            plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
+                            break;
+                        case "rotate (horizontal snap)":
+                            mode = "rotate (vertical)";
+                            plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
+                            break;
+                        case "rotate (vertical)":
+                            mode = "rotate (vertical snap)";
+                            plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
+                            break;
+                        case "rotate (vertical snap)":
+                            mode = "rotate (horizontal2)";
+                            plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
+                            break;
+                        case "rotate (horizontal2)":
+                            mode = "vertical offset";
+                            plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
+                            break;
+                        case "vertical offset":
+                            mode = "distance";
+                            plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
+                            break;
+                        default:
+                            mode = "distance";
+                            plugin.Message(originPlayer.IPlayer, "TLS Mode Changed", mode);
+                            break;
                     }
+                    nextTime2 = Time.time + 0.5f;
                 }
                 if (originPlayer.serverInput.WasJustPressed(BUTTON.FIRE_PRIMARY) && mode.Contains("snap"))
                 {
@@ -415,12 +380,12 @@ namespace Oxide.Plugins
                             {
                                 if (entDis <= maxDis)
                                 {
-                                    entDis = entDis + 0.01f;
+                                    entDis += 0.01f;
                                 }
                             }
                             else
                             {
-                                entDis = entDis + 0.01f;
+                                entDis += 0.01f;
                             }
                             break;
                         case "rotate (horizontal)":
@@ -458,7 +423,7 @@ namespace Oxide.Plugins
                     switch (mode)
                     {
                         case "distance":
-                            entDis = entDis - 0.01f;
+                            entDis -= 0.01f;
                             break;
                         case "rotate (horizontal)":
                             gameObject.transform.Rotate(0, -0.5f, 0);
@@ -475,9 +440,9 @@ namespace Oxide.Plugins
                     }
                 }
                 //if (!rotateMode)
-                    //gameObject.transform.LookAt(originPlayer.transform);
+                //gameObject.transform.LookAt(originPlayer.transform);
                 //else
-                    //gameObject.transform.Rotate(gameObject.transform.rotation.x, roty, gameObject.transform.rotation.z);
+                //gameObject.transform.Rotate(gameObject.transform.rotation.x, roty, gameObject.transform.rotation.z);
                 target.transform.position = Vector3.Lerp(target.transform.position, originPlayer.transform.position + originPlayer.eyes.HeadRay().direction * entDis + new Vector3(0, vertOffset, 0), UnityEngine.Time.deltaTime * 15f);
                 if (stab?.grounded == false) stab.grounded = true;
 

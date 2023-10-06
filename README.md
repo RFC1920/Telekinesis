@@ -1,7 +1,5 @@
 ## Telekinesis (Remod version)
 
-Current version 2.0.9: [Download](https://code.remod.org/Telekinesis.cs)
-
 Allows players to move/rotate entities without picking them up.
 
 ### Notes
@@ -28,6 +26,24 @@ This plugin uses Oxide's permission system. To assign a permission, use oxide.gr
 - `/tls undo` - Revert the latest object back before the latest changes you made
 
 ### Configuration
+
+```json
+{
+  "Settings": {
+    "Restricted max distance": 3.0,
+    "Auto disable length": 60.0,
+    "Restricted Cannot Use If Building Blocked": true,
+    "Restricted OwnerID Only": false,
+    "Restricted Grab Distance": 20.0,
+    "Restricted Cannot Move Players (Sleeping or Awake)": false
+  },
+  "Version": {
+    "Major": 2,
+    "Minor": 0,
+    "Patch": 10
+  }
+}
+```
 
 The settings and options for this plugin can be configured in the Telekinesis.json file under the oxide/config directory. The use of a JSON editor or validation site such as jsonlint.com is recommended to avoid formatting issues and syntax errors.
 
